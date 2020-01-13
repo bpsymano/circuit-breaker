@@ -22,7 +22,7 @@ public class CircuitBreakerConfiguration {
 	private String objectStoreReference;
 	
 	@Parameter
-	@Summary("The amount of failures (errors thrown/caught) until the circuit breaker is tripped")
+	@Summary("The amount of failures (errors thrown/caught) until the circuit breaker is tripped/open")
 	@Optional(defaultValue = "3")
 	private Integer tripThreshold;
 
