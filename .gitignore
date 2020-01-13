@@ -1,0 +1,16 @@
+/target/
+/.classpath
+/.project
+/.mule
+/.settings
+/.apt_generated/
+
+# IntelliJ Idea files
+*.iml
+*.ipr
+*.iws
+*.idea
+
+# Mac
+.DS_Store
+
