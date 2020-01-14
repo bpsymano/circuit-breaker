@@ -50,7 +50,7 @@ public class CircuitBreakerOperations {
 	}
 	
 	private ObjectStore<?> getObjectStore(CircuitBreakerConfiguration config) {
-		return objectStoreManager.<ObjectStore<Integer>>getObjectStore(config.getObjectStoreReference());
+		return objectStoreManager.<ObjectStore<?>>getObjectStore(config.getObjectStoreReference());
 	}
 	
 	private String getFailureCountKey(CircuitBreakerConfiguration config) {
