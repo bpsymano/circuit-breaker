@@ -213,8 +213,8 @@ public class CircuitBreakerOperations {
 				} 
 				if (openWithTimeoutLapse(dateObjectStore, config)) {
 					LOG.info(config.getBreakerName() + "::circuit-beaker:filter CIRCUIT CLOSED - trip timeout exceeded, count reset");
-					resetFailurePoint(dateObjectStore, getFailurePointKey(config), config.getBreakerName());
 					resetFailureCount(countObjectStore, getFailureCountKey(config), config.getBreakerName());
+					resetFailurePoint(dateObjectStore, getFailurePointKey(config), config.getBreakerName());
 					return;
 				} 
 				LOG.info(config.getBreakerName() + "::circuit-breaker:filter CIRCUIT OPEN");
