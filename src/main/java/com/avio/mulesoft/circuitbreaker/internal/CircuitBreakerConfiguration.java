@@ -78,7 +78,9 @@ public class CircuitBreakerConfiguration {
 		breakerConfig.addProperty("objectStoreReference", objectStoreReference);
 		breakerConfig.addProperty("tripThreshold", tripThreshold);
 		breakerConfig.addProperty("tripResetTime", tripResetTime);
-		return breakerConfig.toString();
+		JsonObject breaker = new JsonObject();
+		breaker.add("circuitBreaker", breakerConfig);
+		return breaker.toString();
 	}
 
 }
