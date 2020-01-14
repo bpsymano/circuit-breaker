@@ -64,6 +64,58 @@ This connector is built with a dependency on the MuleSoft Objectstore, supportin
 ```
 # How?
 
+```xml
+<flow name="tripWithErrorType" >
+  <http:listener config-ref="in-http-listener-config" path="/error" doc:name="Listener" />
+
+  <logger level="INFO" message="START" />
+
+  <circuit-breaker:dump-config
+    target="breakerConfig"
+    doc:name="Dump config"
+    config-ref="Circuit_Breaker_Config"/>
+
+  <logger level="INFO" message="vars.breakerConfig::#[vars.breakerConfig]" />
+
+  <circuit-breaker:filter doc:name="Filter" config-ref="Circuit_Breaker_Config"/>
+
+  <http:request config-ref="http-request-config" path="connect-error" method="GET" doc:name="HTTP"/>
+
+  <logger level="INFO" message="END" />
+  <error-handler >
+    <on-error-propagate enableNotifications="false" logException="true" doc:name="On Error Propagate" type="HTTP:CONNECTIVITY">
+      <logger level="INFO" message="END-Error" />
+      <circuit-breaker:trip config-ref="Circuit_Breaker_Config" errorType="HTTP:CONNECTIVITY"/>
+    </on-error-propagate>
+  </error-handler>
+</flow>
+```
+
+```xml
+<flow name="tripWithoutErrorType" >
+  <http:listener config-ref="in-http-listener-config" path="/no-error" doc:name="Listener"/>
+  <logger level="INFO" message="START" />
+
+  <circuit-breaker:dump-config
+    target="breakerConfig"
+    doc:name="Dump config"
+    config-ref="Circuit_Breaker_Config"/>
+
+  <logger level="INFO" message="vars.breakerConfig::#[vars.breakerConfig]" />
+
+  <circuit-breaker:filter doc:name="Filter" config-ref="Circuit_Breaker_Config"/>
+
+  <http:request config-ref="http-request-config" path="connect-error" method="GET" doc:name="HTTP"/>
+
+  <logger level="INFO" message="END" />
+  <error-handler >
+    <on-error-propagate enableNotifications="false" logException="true" doc:name="On Error Propagate">
+      <logger level="INFO" message="END-Error" />
+      <circuit-breaker:trip config-ref="Circuit_Breaker_Config"/>
+    </on-error-propagate>
+  </error-handler>
+</flow>
+```
 ## Using maven dependency
 First, clone this repository and run ```mvn clean install``` to install this maven project in your local .m2 repository.
 
