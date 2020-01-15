@@ -7,11 +7,12 @@ The reason for the circuit breaker pattern is to prevent a dependent resource pr
 
 Implementation of this pattern will shield your application from repeatedly trying to access a resource that is likely to fail. Within your application, you are now able to handle issues related to a CIRCUIT_OPEN without wasting compute resources, and potentially further exacerbating a problem with the downstream resource.
 
-While the pattern defines three states, CLOSED, OPEN and HALF_OPEN, this connector implements two [logical] states, CLOSED and OPEN.
+The pattern defines three states, CLOSED, OPEN and HALF_OPEN, this connector implements all threes as logical states, in that the state of the circuit is based on meeting the number of failures count, the timeout, and whether a newly CLOSE(d) circuit gets tripped again.
 * Logical CLOSED: The request is routed to a resource’s operation. The connector maintains a count of the number of recent failures, and if the call to the operation is unsuccessful the connector  increments this count.
   - If the number of recent failures exceeds a specified threshold, the connector OPENs the circuit. Once OPEN, and with each subsequent request, the connector vetts the request against the resetTime. If the request is within the resetTime window, the connector returns a MuleSoft Error CIRCUIT-BREAKER:CIRCUIT_OPEN, otherwise the connector behaves as if the circuit is CLOSED.
    - The purpose of the resetTime setting is to define the time window for which the downstream resource access issues before the outbound call is attempted again.
-* logical OPEN: The request to the resource fails fast and a MuleSoft Error CIRCUIT-BREAKER:CIRCUIT_OPEN is returned to the calling flow..
+* logical OPEN: The request to the resource fails fast and a MuleSoft Error CIRCUIT-BREAKER:CIRCUIT_OPEN is returned to the calling flow.
+* logical HALF_OPEN: When a newly CLOSE(d) circuit experiences an Error, the circuit is immediately put into an OPEN state.
 
 
 # Implementation details
