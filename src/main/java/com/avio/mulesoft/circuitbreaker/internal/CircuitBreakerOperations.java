@@ -31,6 +31,12 @@ public class CircuitBreakerOperations {
 	
 	private static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 	
+	private static enum State {
+		OPEN,
+		CLOSED,
+		HALF_OPEN
+	}
+	
 	@Inject
 	LockFactory lockFactory;
 	
@@ -60,6 +66,10 @@ public class CircuitBreakerOperations {
 	private String getFailurePointKey(CircuitBreakerConfiguration config) {
 		return String.format("%s.failurePoint", config.getBreakerName());
 	}
+	
+	private String getStateKey(CircuitBreakerConfiguration config) {
+		return String.format("%s.state", config.getBreakerName());
+	}
 
 	private boolean timeoutExceeded(Date failurePoint, long tripResetTime, String breakerConfigName) {			
 		return System.currentTimeMillis() - failurePoint.getTime() > tripResetTime;
@@ -78,57 +88,102 @@ public class CircuitBreakerOperations {
 	private boolean isTripThresholdReached(ObjectStore<Integer> objectStore, CircuitBreakerConfiguration config) throws ObjectStoreException {
 		Integer failureCount = 0;
 		String failureCountKey = getFailureCountKey(config);
-		if (objectStore.contains(getFailureCountKey(config))) {
+		if (objectStore.contains(failureCountKey)) {
 			failureCount = objectStore.retrieve(failureCountKey);
 		} else {
 			objectStore.store(failureCountKey, 0);
 		}
-		LOG.debug( "[isTripThresholdReached]" + config.getBreakerName());	
+		LOG.debug( "[isTripThresholdReached]::" + config.getBreakerName());	
 		return failureCount >= config.getTripThreshold();
 	}
 	
 	private boolean isFailuresBelowTrip(ObjectStore<Integer> objectStore, CircuitBreakerConfiguration config) throws ObjectStoreException {	
 		Integer failureCount = 0;
 		String failureCountKey = getFailureCountKey(config);
-		if (objectStore.contains(getFailureCountKey(config))) {
+		if (objectStore.contains(failureCountKey)) {
 			failureCount = objectStore.retrieve(failureCountKey);
 		}
-		LOG.debug("[isFailuresBelowTrip]" + config.getBreakerName());	
+		LOG.debug("[isFailuresBelowTrip]::" + config.getBreakerName());	
 		return failureCount < config.getTripThreshold();
 	}
 
-	private void incrementFailureCount(ObjectStore<Integer> objectStore, String failureCountKey, String breakerConfigName) throws ObjectStoreException {
+	private void incrementFailureCount(ObjectStore<Integer> objectStore, CircuitBreakerConfiguration config) throws ObjectStoreException {
 		Integer failureCount = 0;
+		String failureCountKey = getFailureCountKey(config);
 		if (objectStore.contains(failureCountKey)) {
 			failureCount = objectStore.retrieve(failureCountKey);
 			objectStore.remove(failureCountKey);
 		}
 		objectStore.store(failureCountKey, failureCount + 1);
-		LOG.debug("[incrementFailureCount]::" + breakerConfigName);
+		LOG.debug("[incrementFailureCount]::" + config.getBreakerName());
 	}
 	
-	private void resetFailureCount(ObjectStore<Integer> objectStore, String failureCountKey, String breakerConfigName) throws ObjectStoreException {
+	private void resetFailureCount(ObjectStore<Integer> objectStore, CircuitBreakerConfiguration config) throws ObjectStoreException {
+		String failureCountKey = getFailureCountKey(config);
 		if (objectStore.contains(failureCountKey)) {
 			objectStore.remove(failureCountKey);
 		}
 		objectStore.store(failureCountKey, 0);
-		LOG.debug("[resetFailureCount]" + breakerConfigName);
+		LOG.debug("[resetFailureCount]::" + config.getBreakerName());
 	}
 	
-	private void resetFailurePoint(ObjectStore<Date> objectStore, String failurePointKey, String breakerConfigName) throws ObjectStoreException {
+	private void resetFailurePoint(ObjectStore<Date> objectStore, CircuitBreakerConfiguration config) throws ObjectStoreException {
+		String failurePointKey = getFailurePointKey(config);
 		if (objectStore.contains(failurePointKey)) {
 			objectStore.remove(failurePointKey);
 		}
-		LOG.debug("[resetFailurePoint]" + breakerConfigName );
+		LOG.debug("[resetFailurePoint]::" + config.getBreakerName());
 	}
 	
-	private void initFailurePoint(ObjectStore<Date> objectStore, String failurePointKey, String breakerConfigName) throws ObjectStoreException {
+	private void initFailurePoint(ObjectStore<Date> objectStore, CircuitBreakerConfiguration config) throws ObjectStoreException {
+		String failurePointKey = getFailurePointKey(config);
 		if (!objectStore.contains(failurePointKey)) {
 			objectStore.store(failurePointKey, new Date());
 		} else {
-			LOG.debug("[initFailurePoint] already set - waiting for expiration::" + breakerConfigName);
+			LOG.debug("[initFailurePoint] already set - waiting for expiration::" + config.getBreakerName());
 		}
-		LOG.debug(breakerConfigName + "::initFailurePoint");
+		LOG.debug("[initFailurePoint]::" + config.getBreakerName());		
+	}
+	
+	private State getBreakerState(CircuitBreakerConfiguration config) throws ObjectStoreException {
+		ObjectStore<?> genericObjectStore = (ObjectStore<?>) getObjectStore(config);
+		String stateKey = getStateKey(config);
+		State currentState = State.CLOSED;
+		if (genericObjectStore.contains(stateKey)) {
+			currentState = (State) genericObjectStore.retrieve(stateKey);
+		} 
+		LOG.debug("[getBreakerState]::" + config.getBreakerName() + "::state::" + currentState);
+		return currentState;
+	}
+	
+	private void setBreakerState(ObjectStore<State> objectStore, State currentState, CircuitBreakerConfiguration config) throws ObjectStoreException {
+		String stateKey = getStateKey(config);
+		if (objectStore.contains(stateKey)) {
+			objectStore.remove(stateKey);
+		}
+		objectStore.store(stateKey, currentState);
+		LOG.debug("[setBreakerState]::"  + config.getBreakerName() + "::setting state to::" +  currentState);
+	}
+	
+	@SuppressWarnings("unchecked")
+	private Lock processCircuitLogic(CircuitBreakerConfiguration config) throws ObjectStoreException {
+		Lock lock;
+		ObjectStore<?> genericObjectStore;
+		lock = acquireLock(config.getObjectStoreReference());					
+		genericObjectStore = (ObjectStore<?>) getObjectStore(config);
+		incrementFailureCount(((ObjectStore<Integer>) genericObjectStore), config);
+		// error on circuit HALF_OPEN, (re)OPEN circuit again
+		if(getBreakerState(config) == State.HALF_OPEN ) {
+			LOG.info("[processCircuitLogic]::" + config.getBreakerName() + "::circuit state change::[HALF_OPEN -> OPEN]");
+			initFailurePoint(((ObjectStore<Date>) genericObjectStore), config);;
+			setBreakerState(((ObjectStore<State>) genericObjectStore), State.OPEN, config);
+		} 
+		if (isTripThresholdReached(((ObjectStore<Integer>) genericObjectStore), config)) {
+			LOG.debug("[processCircuitLogic]::" + config.getBreakerName() + "::failure count matches trip threshold [" + config.getTripThreshold() + "]");
+			initFailurePoint(((ObjectStore<Date>) genericObjectStore), config);
+			setBreakerState(((ObjectStore<State>) genericObjectStore), State.OPEN, config);
+		}
+		return lock;
 	}
 	
 	/*
@@ -146,51 +201,26 @@ public class CircuitBreakerOperations {
     }
 	
 	@Summary("Triggers circuit logic utilizing failed attempts and trip reset time. Can tip with or without a specific error type occuring.")	
-	@SuppressWarnings("unchecked")
 	@MediaType(value = ANY, strict = false)
 	@Throws(ExecuteErrorsProvider.class)
 	public void trip(@Config CircuitBreakerConfiguration config, 
 			@Optional @DisplayName("Error Type") @Summary("The string representation of the ErrorType that you want the breaker to trip on. e.g. HTTP:CONNECTIVIY") String errorType, 
 			@Optional @Content Error error) {		
 		Lock lock = null;
-		ObjectStore<Integer> countObjectStore = null;
-		ObjectStore<Date> dateObjectStore = null;
 		try {
 			if (errorType != null) {
 				if (errorType.equalsIgnoreCase(error.getErrorType().toString())) {
-					LOG.info(config.getBreakerName() + "::trip triggered [" + error.getErrorType().toString() + "] comparing to [" + errorType + "]");
-					lock = acquireLock(config.getObjectStoreReference());
-					countObjectStore = (ObjectStore<Integer>) getObjectStore(config);
-					dateObjectStore = (ObjectStore<Date>) getObjectStore(config);
-					try {
-						incrementFailureCount(countObjectStore, getFailureCountKey(config), config.getBreakerName());
-						if (isTripThresholdReached(countObjectStore, config)) {
-							LOG.debug(config.getBreakerName() + "::failure count matches trip threshold [" + config.getTripThreshold() + "]");
-							initFailurePoint(dateObjectStore, getFailurePointKey(config), config.getBreakerName());
-							LOG.info(config.getBreakerName() + "::circuit-breaker:filter CIRCUIT OPEN");
-						}
-					} finally {
-						lock.unlock();
-					}
+					LOG.info("[trip]::" +config.getBreakerName() + "::trip triggered [" + error.getErrorType().toString() + "] comparing to [" + errorType + "]");
+					lock = processCircuitLogic(config);
 				}
 			} else {
-				LOG.info(config.getBreakerName() + "::trip triggered");
-				lock = acquireLock(config.getObjectStoreReference());
-				countObjectStore = (ObjectStore<Integer>) getObjectStore(config);
-				dateObjectStore = (ObjectStore<Date>) getObjectStore(config);
-				try {
-					incrementFailureCount(countObjectStore, getFailureCountKey(config), config.getBreakerName());
-					if (isTripThresholdReached(countObjectStore, config)) {
-						LOG.debug(config.getBreakerName() + "::failure count matches trip threshold [" + config.getTripThreshold() + "]");
-						initFailurePoint(dateObjectStore, getFailurePointKey(config), config.getBreakerName());
-						LOG.info(config.getBreakerName() + "::circuit-breaker:filter CIRCUIT OPEN");
-					}
-				} finally {
-					lock.unlock();
-				}
+				LOG.info("[trip]::" + config.getBreakerName() + "::trip triggered");
+				lock = processCircuitLogic(config);
 			}
 		} catch (Exception e) {
 			throw new ModuleException(CircuitBreakerError.CIRCUIT_ERROR, e);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -203,22 +233,26 @@ public class CircuitBreakerOperations {
 		try {
 			lock = acquireLock(config.getObjectStoreReference());
 			lock.lock();
-			final ObjectStore<Integer> countObjectStore = (ObjectStore<Integer>)getObjectStore(config);
-			final ObjectStore<Date> dateObjectStore = (ObjectStore<Date>)getObjectStore(config);			
+			final ObjectStore<?> genericObjectStore = (ObjectStore<State>)getObjectStore(config);
 			try {
 				LOG.info(config.getBreakerName() + "::circuit-beaker:filter applied");
-				if (isFailuresBelowTrip(countObjectStore, config)) {
-					LOG.info(config.getBreakerName() + "::circuit-beaker:filter - failure count below threshold");
+				if(getBreakerState(config) == State.OPEN ) {
+					if (openWithTimeoutLapse(((ObjectStore<Date>) genericObjectStore), config)) {
+						LOG.info("[filter]::" + config.getBreakerName() + "::circuit state::" + getBreakerState(config) + "::trip timeout exceeded, count reset");
+						resetFailureCount(((ObjectStore<Integer>) genericObjectStore), config);
+						resetFailurePoint(((ObjectStore<Date>) genericObjectStore), config);
+						setBreakerState(((ObjectStore<State>) genericObjectStore), State.HALF_OPEN, config);
+						LOG.info("[filter]::" + config.getBreakerName() + "::circuit state::" + getBreakerState(config));
+						return;
+					}					
+					LOG.info("[filter]::" + config.getBreakerName() + "::circuit state::" + getBreakerState(config));
+					throw new CircuitOpenException();					
+				}
+				if (isFailuresBelowTrip(((ObjectStore<Integer>) genericObjectStore), config)) {
+					LOG.info("[filter]::" + config.getBreakerName() + "::failure count below threshold");
+					LOG.info("[filter]::" + config.getBreakerName() + "::circuit state::" + getBreakerState(config));
 					return;
-				} 
-				if (openWithTimeoutLapse(dateObjectStore, config)) {
-					LOG.info(config.getBreakerName() + "::circuit-beaker:filter CIRCUIT CLOSED - trip timeout exceeded, count reset");
-					resetFailureCount(countObjectStore, getFailureCountKey(config), config.getBreakerName());
-					resetFailurePoint(dateObjectStore, getFailurePointKey(config), config.getBreakerName());
-					return;
-				} 
-				LOG.info(config.getBreakerName() + "::circuit-breaker:filter CIRCUIT OPEN");
-				throw new CircuitOpenException();
+				}
 			} finally {
 				lock.unlock();
 			}
