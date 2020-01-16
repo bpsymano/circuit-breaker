@@ -1,4 +1,4 @@
-package com.avio.mulesoft.circuitbreaker.internal;
+package com.avioconsulting.mulesoft.circuitbreaker.internal;
 
 import org.mule.runtime.extension.api.annotation.Configurations;
 import org.mule.runtime.extension.api.annotation.Extension;

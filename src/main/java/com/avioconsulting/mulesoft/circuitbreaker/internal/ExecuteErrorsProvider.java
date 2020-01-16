@@ -1,4 +1,4 @@
-package com.avio.mulesoft.circuitbreaker.internal;
+package com.avioconsulting.mulesoft.circuitbreaker.internal;
 
 import java.util.HashSet;
 import java.util.Set;

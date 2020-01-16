@@ -40,8 +40,8 @@ The Circuit Breaker connector supports the following opertions:
 
 ```xml
 <circuit-breaker:config name="Circuit_Breaker_Config"
-  objectStoreReference="_defaultPersistentObjectStore"
-  breakerName="mytestBreaker"
+  objectStoreReference="_defaultInMemoryObjectStore"
+  breakerName="myTestBreaker"
   tripThreshold="5"
   tripResetTime="120000"
   doc:name="Circuit Breaker Config" />
@@ -65,6 +65,8 @@ This connector is built with a dependency on the MuleSoft Objectstore, supportin
 </dependency>
 ```
 # How?
+
+### MuleSoft application
 
 ```xml
 <flow name="tripWithErrorType" >
@@ -118,7 +120,15 @@ This connector is built with a dependency on the MuleSoft Objectstore, supportin
   </error-handler>
 </flow>
 ```
-## Using maven dependency
+
+### Debug output
+
+To enable DEBUG output on hte circuit breaker connector, add the following configuration to you log4j.xml file:
+```xml
+<AsyncLogger name="com.avioconsulting.mulesoft.circuitbreaker" level="DEBUG"/>
+```
+
+### Using maven dependency
 First, clone this repository and run ```mvn clean install``` to install this maven project in your local .m2 repository.
 
 
