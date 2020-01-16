@@ -152,7 +152,7 @@ public class CircuitBreakerOperations {
 		if (genericObjectStore.contains(stateKey)) {
 			currentState = (State) genericObjectStore.retrieve(stateKey);
 		} 
-		LOG.debug("[getBreakerState]::" + config.getBreakerName() + "::state::" + currentState);
+		LOG.debug("[getBreakerState]::" + config.getBreakerName() + "::current state::" + currentState);
 		return currentState;
 	}
 	
@@ -174,15 +174,18 @@ public class CircuitBreakerOperations {
 		incrementFailureCount(((ObjectStore<Integer>) genericObjectStore), config);
 		// error on circuit HALF_OPEN, (re)OPEN circuit again
 		if(getBreakerState(config) == State.HALF_OPEN ) {
-			LOG.info("[processCircuitLogic]::" + config.getBreakerName() + "::circuit state change::[HALF_OPEN -> OPEN]");
 			initFailurePoint(((ObjectStore<Date>) genericObjectStore), config);;
 			setBreakerState(((ObjectStore<State>) genericObjectStore), State.OPEN, config);
+			LOG.info("[processCircuitLogic]::" + config.getBreakerName() + "::circuit state change::[HALF_OPEN -> OPEN]");
 		} 
 		if (isTripThresholdReached(((ObjectStore<Integer>) genericObjectStore), config)) {
-			LOG.info("[processCircuitLogic]::" + config.getBreakerName() + "::failure count matches trip threshold [" + config.getTripThreshold() + "]");
-			LOG.info("[processCircuitLogic]::" + config.getBreakerName() + "::circuit state change::[CLOSED -> OPEN]");
+			LOG.debug("[processCircuitLogic]::" + config.getBreakerName() + "::failure count matches trip threshold [" + config.getTripThreshold() + "]");
+			State state = getBreakerState(config);
+			if(getBreakerState(config) != State.OPEN ) {
+				LOG.info("[processCircuitLogic]::" + config.getBreakerName() + "::circuit state change::[" + state + " -> OPEN]");
+				setBreakerState(((ObjectStore<State>) genericObjectStore), State.OPEN, config);
+			} 
 			initFailurePoint(((ObjectStore<Date>) genericObjectStore), config);
-			setBreakerState(((ObjectStore<State>) genericObjectStore), State.OPEN, config);
 		}
 		return lock;
 	}
@@ -210,14 +213,15 @@ public class CircuitBreakerOperations {
 		Lock lock = null;
 		try {
 			if (errorType != null) {
-				LOG.info("[trip]::" +config.getBreakerName() + "::TRIP triggered [" + error.getErrorType().toString() + "] comparing to [" + errorType + "]");
+				LOG.info("[TRIP]::" + config.getBreakerName() + "::triggered [" + error.getErrorType().toString() + "] comparing to [" + errorType + "]");
 				if (errorType.equalsIgnoreCase(error.getErrorType().toString())) {
 					lock = processCircuitLogic(config);
 				}
 			} else {
-				LOG.info("[trip]::" + config.getBreakerName() + "::TRIP triggered");
+				LOG.info("[TRIP]::" + config.getBreakerName() + "::triggered");
 				lock = processCircuitLogic(config);
 			}
+			LOG.info("[TRIP]::" + config.getBreakerName() + "::circuit state::[" + getBreakerState(config) + "]");
 		} catch (Exception e) {
 			throw new ModuleException(CircuitBreakerError.CIRCUIT_ERROR, e);
 		} finally {
@@ -236,25 +240,24 @@ public class CircuitBreakerOperations {
 			lock.lock();
 			final ObjectStore<?> genericObjectStore = (ObjectStore<?>)getObjectStore(config);
 			try {
-				LOG.info("[filter]::" + config.getBreakerName() + "::FILTER applied");
+				LOG.info("[FILTER]::" + config.getBreakerName() + "::applied");
 				if(getBreakerState(config) == State.OPEN ) {
 					if (openWithTimeoutLapse(((ObjectStore<Date>) genericObjectStore), config)) {
-						LOG.info("[filter]::" + config.getBreakerName() + "::circuit STATE::" + getBreakerState(config) + "::TRIP timeout exceeded, count reset");
 						resetFailureCount(((ObjectStore<Integer>) genericObjectStore), config);
 						resetFailurePoint(((ObjectStore<Date>) genericObjectStore), config);
 						setBreakerState(((ObjectStore<State>) genericObjectStore), State.HALF_OPEN, config);
-						LOG.debug("[filter]::" + config.getBreakerName() + "::circuit STATE::" + getBreakerState(config));
+						LOG.info("[FILTER]::" + config.getBreakerName() + "::timeout exceeded, count reset");
 						return;
-					}					
-					LOG.debug("[filter]::" + config.getBreakerName() + "::circuit STATE::" + getBreakerState(config));
+					}
 					throw new CircuitOpenException();					
 				}
 				if (isFailuresBelowTrip(((ObjectStore<Integer>) genericObjectStore), config)) {
-					LOG.info("[filter]::" + config.getBreakerName() + "::failure count below threshold");
-					LOG.debug("[filter]::" + config.getBreakerName() + "::circuit STATE::" + getBreakerState(config));
+					setBreakerState(((ObjectStore<State>) genericObjectStore), State.CLOSED, config);
+					LOG.info("[FILTER]::" + config.getBreakerName() + "::failure count below threshold");
 					return;
 				}
 			} finally {
+				LOG.info("[FILTER]::" + config.getBreakerName() + "::circuit state::[" + getBreakerState(config) + "]");
 				lock.unlock();
 			}
 		} catch (CircuitOpenException circuitOpenException) {
