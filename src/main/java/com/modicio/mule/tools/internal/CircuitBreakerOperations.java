@@ -1,5 +1,5 @@
 
-package com.avioconsulting.mulesoft.circuitbreaker.internal;
+package com.modicio.mule.tools.internal;
 
 import static org.mule.runtime.extension.api.annotation.param.MediaType.ANY;
 

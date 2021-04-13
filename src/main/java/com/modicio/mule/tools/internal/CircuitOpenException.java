@@ -1,4 +1,4 @@
-package com.avioconsulting.mulesoft.circuitbreaker.internal;
+package com.modicio.mule.tools.internal;
 
 import org.mule.runtime.extension.api.exception.ModuleException;
 
